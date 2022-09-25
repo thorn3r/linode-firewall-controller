@@ -1,0 +1,16 @@
+domain: linode.com
+layout:
+- go.kubebuilder.io/v4-alpha
+projectName: linode-firewall-controller
+repo: github.com/thorn3r/linode-firewall-controller
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: linode.com
+  group: networking
+  kind: ClusterwideNetworkPolicy
+  path: github.com/thorn3r/linode-firewall-controller/api/v1alpha1
+  version: v1alpha1
+version: "3"

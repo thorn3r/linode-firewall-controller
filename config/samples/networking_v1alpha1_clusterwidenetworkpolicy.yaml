@@ -1,0 +1,12 @@
+apiVersion: networking.linode.com/v1alpha1
+kind: ClusterwideNetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterwidenetworkpolicy
+    app.kubernetes.io/instance: clusterwidenetworkpolicy-sample
+    app.kubernetes.io/part-of: linode-firewall-controller
+    app.kuberentes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: linode-firewall-controller
+  name: clusterwidenetworkpolicy-sample
+spec:
+  # TODO(user): Add fields here

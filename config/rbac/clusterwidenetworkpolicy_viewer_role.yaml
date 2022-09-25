@@ -1,0 +1,27 @@
+# permissions for end users to view clusterwidenetworkpolicies.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: clusterwidenetworkpolicy-viewer-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: linode-firewall-controller
+    app.kubernetes.io/part-of: linode-firewall-controller
+    app.kubernetes.io/managed-by: kustomize
+  name: clusterwidenetworkpolicy-viewer-role
+rules:
+- apiGroups:
+  - networking.linode.com
+  resources:
+  - clusterwidenetworkpolicies
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - networking.linode.com
+  resources:
+  - clusterwidenetworkpolicies/status
+  verbs:
+  - get
