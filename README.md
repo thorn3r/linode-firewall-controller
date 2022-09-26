@@ -1,6 +1,8 @@
 # linode-firewall-controller
 The linode-firewall-controller extends support for Linode Cloud Firewalls to LKE.
 
+<img src="https://www.linode.com/wp-content/uploads/2020/05/icon-cloud-firewall-2c-1.svg" width=150>
+
 ### This API is in Alpha
 As an alpha API, the resources are subject to breaking changes in the future.
 
