@@ -9,4 +9,15 @@ metadata:
     app.kubernetes.io/created-by: linode-firewall-controller
   name: clusterwidenetworkpolicy-sample
 spec:
-  # TODO(user): Add fields here
+  ingress:
+  - from:
+    - cidr: 1.1.0.0/24
+    ports:
+    - protocol: UDP
+      port: 53
+  egress:
+  - to:
+    - cidr: 1.1.0.0/24
+    ports:
+    - protocol: UDP
+      port: 53
