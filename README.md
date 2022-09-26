@@ -28,7 +28,7 @@ kubectl apply -k config/rbac
 2. Deploy a ClusterwideNetworkPolicy resource
 Create a new ClusterwideNetworkPolicy, or use the provided sample manifest to get started:
 ```sh
-kubectl apply -k config/sample
+kubectl apply -f config/samples
 ```
 
 Example ClusterwideNetworkPolicy:
