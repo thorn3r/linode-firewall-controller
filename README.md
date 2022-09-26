@@ -1,6 +1,15 @@
 # linode-firewall-controller
 The linode-firewall-controller extends support for Linode Cloud Firewalls to LKE.
+
+### This API is in Alpha
+As an alpha API, the resources are subject to breaking changes in the future.
+
+TODO: Reduce volume of reconciliation events by filtering out updates to Node Status
+
+TODO: Add support for IPIP traffic required for the calico overlay network. This is currently supported in the Linode API, but linodego support has not yet been added.
+
 ## Description
+
 linode-firewall-controller is designed to run within an LKE cluster to extend support for Linode Cloud Firewalls. It implements a controller for a new CRD, ClusterwideNetworkPolicy, which allows a user to specify a set of egress and ingress rules to be applied to all cluster nodes at layer3/4 (IPIP support coming soon). For each ClusterwideNetworkPolicy, a Linode Cloud Firewall is provisioned and configured to the specifications. When Kuberenetes Nodes are created or deleted, the Firewall is automatically updated.
 
 ## Getting Started
