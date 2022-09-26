@@ -31,9 +31,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	"github.com/linode/linodego"
 	networkingv1alpha1 "github.com/thorn3r/linode-firewall-controller/api/v1alpha1"
 	"github.com/thorn3r/linode-firewall-controller/controllers"
+	"github.com/thorn3r/linode-firewall-controller/pkg/util"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -95,11 +95,12 @@ func main() {
 	if !ok {
 		setupLog.Error(err, "unable to fetch Linode Token for client")
 	}
+	apiURL, _ := os.LookupEnv("API_URL")
 
 	if err = (&controllers.ClusterwideNetworkPolicyReconciler{
 		Client:       mgr.GetClient(),
 		Scheme:       mgr.GetScheme(),
-		LinodeClient: NewLinodeClient(linodeToken, "linode-firewall-controller", ""),
+		LinodeClient: util.NewLinodeClient(linodeToken, "linode-firewall-controller", apiURL),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ClusterwideNetworkPolicy")
 		os.Exit(1)
@@ -120,16 +121,4 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
-}
-
-func NewLinodeClient(token, ua string, url string) *linodego.Client {
-	linodeClient := linodego.NewClient(nil)
-	linodeClient.SetUserAgent(ua)
-	linodeClient.SetToken(token)
-
-	if url != "" {
-		linodeClient.SetBaseURL(url)
-	}
-
-	return &linodeClient
 }
