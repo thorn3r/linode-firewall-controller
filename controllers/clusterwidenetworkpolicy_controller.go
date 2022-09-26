@@ -54,6 +54,7 @@ type ClusterwideNetworkPolicyReconciler struct {
 //+kubebuilder:rbac:groups=networking.linode.com,resources=clusterwidenetworkpolicies,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=networking.linode.com,resources=clusterwidenetworkpolicies/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=networking.linode.com,resources=clusterwidenetworkpolicies/finalizers,verbs=update
+//+kubebuilder:rbac:groups=v1,resources=nodes,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.

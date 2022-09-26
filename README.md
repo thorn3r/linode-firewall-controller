@@ -1,27 +1,62 @@
 # linode-firewall-controller
-// TODO(user): Add simple overview of use/purpose
-
+The linode-firewall-controller extends support for Linode Cloud Firewalls to LKE.
 ## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+linode-firewall-controller is designed to run within an LKE cluster to extend support for Linode Cloud Firewalls. It implements a controller for a new CRD, ClusterwideNetworkPolicy, which allows a user to specify a set of egress and ingress rules to be applied to all cluster nodes at layer3/4 (IPIP support coming soon). For each ClusterwideNetworkPolicy, a Linode Cloud Firewall is provisioned and configured to the specifications. When Kuberenetes Nodes are created or deleted, the Firewall is automatically updated.
 
 ## Getting Started
-You’ll need a Kubernetes cluster to run against. You can use [KIND](https://sigs.k8s.io/kind) to get a local cluster for testing, or run against a remote cluster.
-**Note:** Your controller will automatically use the current context in your kubeconfig file (i.e. whatever cluster `kubectl cluster-info` shows).
+You’ll need an LKE cluster to run against. An LKE cluster can be deployed via the Linode Cloud Manager[cloud.linode.com], APIv4[developers.linode.com], or the Linode CLI[https://www.linode.com/docs/products/tools/cli/get-started/]
 
 ### Running on the cluster
-1. Install Instances of Custom Resources:
+1. Install the ClusterwideNetworkPolicy Custom Resource Definition and linode-firewall-controller:
 
 ```sh
-kubectl apply -f config/samples/
+kubectl apply -k config/crd
+kubectl apply -k config/manager
+kubectl apply -k config/rbac
+```
+2. Deploy a ClusterwideNetworkPolicy resource
+Create a new ClusterwideNetworkPolicy, or use the provided sample manifest to get started:
+```sh
+kubectl apply -k config/sample
 ```
 
-2. Build and push your image to the location specified by `IMG`:
+Example ClusterwideNetworkPolicy:
+```yaml
+apiVersion: networking.linode.com/v1alpha1
+kind: ClusterwideNetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterwidenetworkpolicy
+    app.kubernetes.io/instance: clusterwidenetworkpolicy-sample
+    app.kubernetes.io/part-of: linode-firewall-controller
+    app.kuberentes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: linode-firewall-controller
+  name: clusterwidenetworkpolicy-sample
+spec:
+  ingress:
+  # allow web traffic from 172.0.0.0/12
+  - from:
+    - cidr: 172.0.0.0/12
+    ports:
+    - protocol: TCP
+      port: 80
+  egress:
+  # allow egress DNS to all private network addresses
+  - to:
+    - cidr: 192.168.128.0/17
+    ports:
+    - protocol: UDP
+      port: 53
+```
+
+### Developing
+1. Build and push your image to the location specified by `IMG`:
 	
 ```sh
 make docker-build docker-push IMG=<some-registry>/linode-firewall-controller:tag
 ```
 	
-3. Deploy the controller to the cluster with the image specified by `IMG`:
+2. Deploy the controller to the cluster with the image specified by `IMG`:
 
 ```sh
 make deploy IMG=<some-registry>/linode-firewall-controller:tag
