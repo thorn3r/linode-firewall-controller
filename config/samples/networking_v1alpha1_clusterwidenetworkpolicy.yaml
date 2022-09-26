@@ -10,14 +10,16 @@ metadata:
   name: clusterwidenetworkpolicy-sample
 spec:
   ingress:
+  # allow web traffic from 172.0.0.0/12
   - from:
-    - cidr: 1.1.0.0/24
+    - cidr: 172.0.0.0/12
     ports:
     - protocol: UDP
-      port: 53
+      port: 80
   egress:
+  # allow egress DNS to all private network addresses
   - to:
-    - cidr: 1.1.0.0/24
+    - cidr: 192.168.128.0/17
     ports:
     - protocol: UDP
       port: 53
