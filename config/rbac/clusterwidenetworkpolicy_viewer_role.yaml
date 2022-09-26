@@ -3,12 +3,6 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
-    app.kubernetes.io/name: clusterrole
-    app.kubernetes.io/instance: clusterwidenetworkpolicy-viewer-role
-    app.kubernetes.io/component: rbac
-    app.kubernetes.io/created-by: linode-firewall-controller
-    app.kubernetes.io/part-of: linode-firewall-controller
-    app.kubernetes.io/managed-by: kustomize
   name: clusterwidenetworkpolicy-viewer-role
 rules:
 - apiGroups:
@@ -25,3 +19,11 @@ rules:
   - clusterwidenetworkpolicies/status
   verbs:
   - get
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  verbs:
+  - get
+  - list
+  - watch

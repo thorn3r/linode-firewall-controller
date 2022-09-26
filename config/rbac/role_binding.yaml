@@ -2,18 +2,12 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   labels:
-    app.kubernetes.io/name: clusterrolebinding
-    app.kubernetes.io/instance: manager-rolebinding
-    app.kubernetes.io/component: rbac
-    app.kubernetes.io/created-by: linode-firewall-controller
-    app.kubernetes.io/part-of: linode-firewall-controller
-    app.kubernetes.io/managed-by: kustomize
-  name: manager-rolebinding
+  name: linode-firewall-manager-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: manager-role
+  name: linode-firewall-manager-role
 subjects:
 - kind: ServiceAccount
-  name: controller-manager
-  namespace: system
+  name: linode-firewall-controller-manager
+  namespace: kube-system
