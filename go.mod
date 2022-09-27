@@ -3,7 +3,7 @@ module github.com/thorn3r/linode-firewall-controller
 go 1.19
 
 require (
-	github.com/linode/linodego v1.9.2
+	github.com/linode/linodego v1.9.3
 	github.com/lithammer/shortuuid/v4 v4.0.0
 	github.com/onsi/ginkgo/v2 v2.1.4
 	github.com/onsi/gomega v1.19.0
