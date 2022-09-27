@@ -37,22 +37,32 @@ apiVersion: networking.linode.com/v1alpha1
 kind: ClusterwideNetworkPolicy
 metadata:
   labels:
-  name: clusterwidenetworkpolicy-sample
+  name: clusterwidenetworkpolicy-base
 spec:
+# The list of rules defined in this example are required to support normal LKE cluster functionality
   ingress:
   # allow web traffic from 172.0.0.0/12
   - from:
-    - cidr: 172.0.0.0/12
-    ports:
-    - protocol: TCP
-      port: 80
-  egress:
-  # allow egress DNS to all private network addresses
-  - to:
     - cidr: 192.168.128.0/17
     ports:
+    # Kubelet health checks
+    - protocol: TCP
+      port: 10250
+    # Calico BGP
+    - protocol: TCP
+      port: 179
+    # wireguard tunneling for for kubectl proxy
     - protocol: UDP
-      port: 53
+      port: 51820
+  - from:
+    ports:
+    # allow NodePorts services
+    - protocol: TCP
+      port: 30000
+      endPort: 32767
+    - protocol: UDP
+      port: 30000
+      endPort: 32767
 ```
 
 ### Developing

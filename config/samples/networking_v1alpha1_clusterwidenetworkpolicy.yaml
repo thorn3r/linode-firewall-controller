@@ -2,7 +2,7 @@ apiVersion: networking.linode.com/v1alpha1
 kind: ClusterwideNetworkPolicy
 metadata:
   labels:
-  name: clusterwidenetworkpolicy-sample
+  name: clusterwidenetworkpolicy-base
 spec:
 # The list of rules defined in this example are required to support normal LKE cluster functionality
   ingress:
