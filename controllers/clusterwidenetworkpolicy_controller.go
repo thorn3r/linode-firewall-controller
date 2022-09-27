@@ -35,6 +35,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	"github.com/linode/linodego"
+	shortuuid "github.com/lithammer/shortuuid/v4"
 	networkingv1alpha1 "github.com/thorn3r/linode-firewall-controller/api/v1alpha1"
 )
 
@@ -63,7 +64,7 @@ type ClusterwideNetworkPolicyReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.13.0/pkg/reconcile
 func (r *ClusterwideNetworkPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
-	log.Info("triggering reconcile")
+	log.Info("triggering reconcile", "ClustewideNetworkPolicy", req.NamespacedName)
 
 	var cwnp networkingv1alpha1.ClusterwideNetworkPolicy
 	var firewall *linodego.Firewall
@@ -92,7 +93,6 @@ func (r *ClusterwideNetworkPolicyReconciler) Reconcile(ctx context.Context, req 
 	clusterLabel := strings.Split(clusterNodes.Items[0].Name, "-")[0]
 
 	// parse Linode IDs from Node labels
-	// TODO: fetch Linodes from API with cluster ID
 	linodeIDs, err := LinodeIDsForCluster(ctx, r.LinodeClient, clusterLabel)
 	if err != nil {
 		log.Error(err, "unable to fetch Linodes for Cluster", "cluster", clusterLabel)
@@ -101,7 +101,6 @@ func (r *ClusterwideNetworkPolicyReconciler) Reconcile(ctx context.Context, req 
 
 	firewallIDAnnotation, ok := cwnp.Annotations[annLinodeFirewallID]
 	if !ok || firewallIDAnnotation == "" {
-		log.Info("debug", "firewallIDAnnotation", firewallIDAnnotation)
 		// Create new Linode Firewall if ID annotation is not found
 		var err error
 
@@ -124,7 +123,6 @@ func (r *ClusterwideNetworkPolicyReconciler) Reconcile(ctx context.Context, req 
 		// set firewall ID annotation
 		firewallIDAnnotation = strconv.Itoa(firewall.ID)
 		cwnp.ObjectMeta.Annotations[annLinodeFirewallID] = firewallIDAnnotation
-		log.Info("debug setting fw id annotation", "annotation", strconv.Itoa(firewall.ID))
 		if err := r.Update(ctx, &cwnp); err != nil {
 			log.Error(err, "unable to set firewall ID annotation on ClusterwideNetworkPolicy")
 		}
@@ -169,7 +167,6 @@ func (r *ClusterwideNetworkPolicyReconciler) Reconcile(ctx context.Context, req 
 	}
 
 	// Add any missing Nodes to the Firewall as devices
-	log.Info("debug: reconciling nodes", "linodeIDs", linodeIDs, "devices", devices)
 	err = r.ReconcileNodes(ctx, firewallID, linodeIDs, devices)
 	if err != nil {
 		log.Error(err, "unable to reconcile nodes")
@@ -189,48 +186,142 @@ func (r *ClusterwideNetworkPolicyReconciler) Reconcile(ctx context.Context, req 
 		firewallRules.OutboundPolicy = firewallDrop
 	}
 
-	for _, rule := range cwnp.Spec.Ingress {
-		for _, addr := range rule.From {
-			for _, port := range rule.Ports {
-				newRule := linodego.FirewallRule{
-					Action:    firewallAccept,
-					Ports:     port.Port.String(),
-					Protocol:  linodego.NetworkProtocol(*port.Protocol),
-					Addresses: linodego.NetworkAddresses{IPv4: &[]string{addr.CIDR}},
-					Label:     fmt.Sprintf("port%s-%s", port.Port.String(), strings.Replace(addr.CIDR, "/", "_", -1)),
-				}
-				firewallRules.Inbound = append(firewallRules.Inbound, newRule)
-				//firewallRules.InboundPolicy = firewallDrop
-			}
-		}
-	}
+	// Reconcile Ingress rules
 
-	for _, rule := range cwnp.Spec.Egress {
-		for _, addr := range rule.To {
-			for _, port := range rule.Ports {
-				newRule := linodego.FirewallRule{
-					Action:    firewallAccept,
-					Ports:     port.Port.String(),
-					Protocol:  linodego.NetworkProtocol(*port.Protocol),
-					Addresses: linodego.NetworkAddresses{IPv4: &[]string{addr.CIDR}},
-					Label:     fmt.Sprintf("port%s-%s", port.Port.String(), strings.Replace(addr.CIDR, "/", "_", -1)),
-				}
-				firewallRules.Outbound = append(firewallRules.Outbound, newRule)
-			}
-		}
-	}
-
-	// TODO: force allow IPIP traffic over private network, as calico overlay network needs this
-	// the Linode API added support for IPENAP, linodego has not yet been updated
-
-	if _, err = r.LinodeClient.UpdateFirewallRules(ctx, firewallID, firewallRules); err != nil {
-		log.Error(err, "unable to update Firewall rules", "firewallRules", firewallRules)
+	// Fetch existing rules so we can determine if there's a diff
+	existingRules, err := r.LinodeClient.GetFirewallRules(ctx, firewallID)
+	if err != nil {
+		log.Error(err, "unable to retrieve existing firewall rules", "firewallID", firewallID)
 		return ctrl.Result{}, err
+	}
+	hasDiff := false
+	for _, rule := range cwnp.Spec.Ingress {
+		for _, port := range rule.Ports {
+			ports := port.Port.String()
+
+			// handle port ranges via endPort
+			if port.EndPort != nil {
+				ports += fmt.Sprintf("-%d", *port.EndPort)
+			}
+			var addresses []string
+			for _, addr := range rule.From {
+				addresses = append(addresses, addr.CIDR)
+			}
+			if len(addresses) < 1 {
+				addresses = []string{"0.0.0.0/0"}
+			}
+			newRule := linodego.FirewallRule{
+				Action:    firewallAccept,
+				Ports:     ports,
+				Protocol:  linodego.NetworkProtocol(*port.Protocol),
+				Addresses: linodego.NetworkAddresses{IPv4: &addresses},
+				Label:     fmt.Sprintf("cwnp-%v", shortuuid.New()),
+			}
+			firewallRules.Inbound = append(firewallRules.Inbound, newRule)
+			if !firewallRulesContains(existingRules, &newRule) {
+				hasDiff = true
+			}
+		}
+	}
+	// Reconcile Egress rules
+	for _, rule := range cwnp.Spec.Egress {
+		for _, port := range rule.Ports {
+			ports := port.Port.String()
+			if port.EndPort != nil {
+				ports += fmt.Sprintf("-%d", *port.EndPort)
+			}
+			var addresses []string
+			for _, addr := range rule.To {
+				addresses = append(addresses, addr.CIDR)
+			}
+			if len(addresses) < 1 {
+				addresses = []string{"0.0.0.0/0"}
+			}
+			newRule := linodego.FirewallRule{
+				Action:    firewallAccept,
+				Ports:     ports,
+				Protocol:  linodego.NetworkProtocol(*port.Protocol),
+				Addresses: linodego.NetworkAddresses{IPv4: &addresses},
+				Label:     fmt.Sprintf("cwnp-%v", shortuuid.New()),
+			}
+			firewallRules.Outbound = append(firewallRules.Outbound, newRule)
+			if !firewallRulesContains(existingRules, &newRule) {
+				hasDiff = true
+			}
+		}
+	}
+
+	// It is necessary to allow IPIP (IPENCAP) traffic to allow calico overlay network to operate.
+	// Outbound and Inbound rules are added to allow IPIP traffic to and from all cluster nodes.
+	var clusterAddresses []string
+	for _, node := range clusterNodes.Items {
+		for _, addr := range node.Status.Addresses {
+			if addr.Type == corev1.NodeInternalIP {
+				clusterAddresses = append(clusterAddresses, fmt.Sprintf("%s/32", addr.Address))
+			}
+		}
+	}
+	allowIPIP := linodego.FirewallRule{
+		Action:    firewallAccept,
+		Protocol:  linodego.IPENCAP,
+		Addresses: linodego.NetworkAddresses{IPv4: &clusterAddresses},
+		Label:     "calico-overlay",
+	}
+	firewallRules.Outbound = append(firewallRules.Outbound, allowIPIP)
+	firewallRules.Inbound = append(firewallRules.Inbound, allowIPIP)
+	if !firewallRulesContains(existingRules, &allowIPIP) {
+		hasDiff = true
+	}
+
+	// Only apply firewall rules if there is a diff between existing and new rules
+	if hasDiff {
+		log.Info("applying Firewall rules")
+		if _, err = r.LinodeClient.UpdateFirewallRules(ctx, firewallID, firewallRules); err != nil {
+			log.Error(err, "unable to update Firewall rules", "firewallRules", firewallRules)
+			return ctrl.Result{}, err
+		}
 	}
 
 	return ctrl.Result{}, nil
 }
 
+// firewallRulesContains returns True if existingRules contains newRule, and
+// false otherwise. This helper function is used to determine if there is a
+// diff between object spec and the state of the backing Linode Firewall
+func firewallRulesContains(existingRules *linodego.FirewallRuleSet, newRule *linodego.FirewallRule) bool {
+	for _, inbound := range existingRules.Inbound {
+		if inbound.Ports == newRule.Ports && inbound.Protocol == newRule.Protocol && networkAddressesContains(inbound.Addresses, newRule.Addresses) {
+			return true
+		}
+	}
+	for _, outbound := range existingRules.Outbound {
+		if outbound.Ports == newRule.Ports && outbound.Protocol == newRule.Protocol && networkAddressesContains(outbound.Addresses, newRule.Addresses) {
+			return true
+		}
+	}
+	return false
+}
+
+// networkAddressesContains returns True if existingAddr contains newAddr, and
+// false otherwise.
+func networkAddressesContains(existingAddr, newAddr linodego.NetworkAddresses) bool {
+	for _, existing := range *existingAddr.IPv4 {
+		contains := false
+		for _, new := range *newAddr.IPv4 {
+			if existing == new {
+				contains = true
+				break
+			}
+		}
+		if !contains {
+			return false
+		}
+	}
+	return true
+}
+
+// ReconcileNodes adds and removes Kubernetes Nodes from the Linode Firewall to
+// match the state of the current cluster.
 func (r *ClusterwideNetworkPolicyReconciler) ReconcileNodes(ctx context.Context, firewallID int, linodeIDs []int, devices []linodego.FirewallDevice) error {
 	// TODO: make this more efficient than O(n^2)
 	log := log.FromContext(ctx)
@@ -245,7 +336,6 @@ func (r *ClusterwideNetworkPolicyReconciler) ReconcileNodes(ctx context.Context,
 			}
 		}
 		if !exists {
-			log.Info("debug adding node to firewall", "linodeID", linodeID)
 			createOpts := linodego.FirewallDeviceCreateOptions{
 				ID:   linodeID,
 				Type: linodego.FirewallDeviceLinode,
@@ -258,7 +348,7 @@ func (r *ClusterwideNetworkPolicyReconciler) ReconcileNodes(ctx context.Context,
 		}
 	}
 
-	// remove any delete nodes
+	// remove any deleted nodes
 	for _, device := range devices {
 		exists := false
 		for _, linodeID := range linodeIDs {
@@ -268,7 +358,6 @@ func (r *ClusterwideNetworkPolicyReconciler) ReconcileNodes(ctx context.Context,
 			}
 		}
 		if !exists {
-			log.Info("debug removing node from firewall", "deviceID", device.Entity.ID)
 			err := r.LinodeClient.DeleteFirewallDevice(ctx, firewallID, device.Entity.ID)
 			if err != nil {
 				log.Error(err, "unable to delete Firewall Device", "firewall", firewallID, "device", device.Entity.ID)
