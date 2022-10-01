@@ -173,20 +173,17 @@ func (r *ClusterwideNetworkPolicyReconciler) Reconcile(ctx context.Context, req 
 		return ctrl.Result{}, err
 	}
 
-	// Reconcile Firewall Rules
+	// Set default policy to Accept if no rules are specified
 	var firewallRules linodego.FirewallRuleSet
-	if len(cwnp.Spec.Ingress) == 0 {
-		firewallRules.InboundPolicy = firewallAccept
-	} else {
+	firewallRules.InboundPolicy = firewallAccept
+	firewallRules.OutboundPolicy = firewallAccept
+
+	if len(cwnp.Spec.Ingress) > 0 {
 		firewallRules.InboundPolicy = firewallDrop
 	}
-	if len(cwnp.Spec.Egress) == 0 {
-		firewallRules.OutboundPolicy = firewallAccept
-	} else {
+	if len(cwnp.Spec.Egress) > 0 {
 		firewallRules.OutboundPolicy = firewallDrop
 	}
-
-	// Reconcile Ingress rules
 
 	// Fetch existing rules so we can determine if there's a diff
 	existingRules, err := r.LinodeClient.GetFirewallRules(ctx, firewallID)
@@ -195,6 +192,8 @@ func (r *ClusterwideNetworkPolicyReconciler) Reconcile(ctx context.Context, req 
 		return ctrl.Result{}, err
 	}
 	hasDiff := false
+
+	// Reconcile Ingress rules
 	for _, rule := range cwnp.Spec.Ingress {
 		for _, port := range rule.Ports {
 			ports := port.Port.String()
