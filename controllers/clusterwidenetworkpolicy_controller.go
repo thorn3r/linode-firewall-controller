@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -41,6 +42,7 @@ import (
 
 const (
 	annLinodeFirewallID = "networking.linode.com/linode-firewall-id"
+	annFinalizer        = "networking.linode.com/finalizer"
 	firewallAccept      = "ACCEPT"
 	firewallDrop        = "DROP"
 )
@@ -104,7 +106,6 @@ func (r *ClusterwideNetworkPolicyReconciler) Reconcile(ctx context.Context, req 
 		// Create new Linode Firewall if ID annotation is not found
 		var err error
 
-		//TODO: CreatFirewallIfNotExists
 		log.Info("creating new firewall")
 		firewall, err = r.LinodeClient.CreateFirewall(
 			ctx,
@@ -141,6 +142,32 @@ func (r *ClusterwideNetworkPolicyReconciler) Reconcile(ctx context.Context, req 
 		log.Error(err, "unable to parse FirewallID annotation to int")
 		return ctrl.Result{}, err
 	}
+
+	// determine if the ClusterwideNetworkPolicy is being deleted
+	if cwnp.ObjectMeta.DeletionTimestamp.IsZero() {
+		// not being deleted, add finalizer
+		if !controllerutil.ContainsFinalizer(&cwnp, annFinalizer) {
+			controllerutil.AddFinalizer(&cwnp, annFinalizer)
+			if err := r.Update(ctx, &cwnp); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+	} else {
+		// the object is being deleted
+		if controllerutil.ContainsFinalizer(&cwnp, annFinalizer) {
+			// delete the firewall
+			if err := r.LinodeClient.DeleteFirewall(ctx, firewallID); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+		// remove finalizer so the object can be deleted
+		controllerutil.RemoveFinalizer(&cwnp, annFinalizer)
+		if err := r.Update(ctx, &cwnp); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
+	}
+
 	firewall, err = r.LinodeClient.GetFirewall(ctx, firewallID)
 	if err != nil {
 		log.Error(err, "unable to fetch Firewall from Linode API")
@@ -386,18 +413,6 @@ func (r *ClusterwideNetworkPolicyReconciler) findClusterwideNetworkPolicies(obj 
 	return requests
 }
 
-// SetupWithManager sets up the controller with the Manager.
-func (r *ClusterwideNetworkPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&networkingv1alpha1.ClusterwideNetworkPolicy{}).
-		Watches(
-			&source.Kind{Type: &corev1.Node{}},
-			// TODO: filter out Node update events
-			handler.EnqueueRequestsFromMapFunc(r.findClusterwideNetworkPolicies),
-		).
-		Complete(r)
-}
-
 func LinodeIDsForCluster(ctx context.Context, client *linodego.Client, clusterLabel string) ([]int, error) {
 	var nodeIDs []int
 	// remove 'lke' prefix from cluster label
@@ -416,4 +431,16 @@ func LinodeIDsForCluster(ctx context.Context, client *linodego.Client, clusterLa
 		}
 	}
 	return nodeIDs, nil
+}
+
+// SetupWithManager sets up the controller with the Manager.
+func (r *ClusterwideNetworkPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&networkingv1alpha1.ClusterwideNetworkPolicy{}).
+		Watches(
+			// TODO: filter out Node update events. these cause excessive d
+			&source.Kind{Type: &corev1.Node{}},
+			handler.EnqueueRequestsFromMapFunc(r.findClusterwideNetworkPolicies),
+		).
+		Complete(r)
 }
